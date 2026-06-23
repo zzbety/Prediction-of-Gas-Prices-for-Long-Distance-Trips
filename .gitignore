@@ -1,0 +1,31 @@
+# R / IDE
+.Rhistory
+.Rproj.user/
+*.Rproj
+.DS_Store
+
+# Secrets
+.env
+.env.*
+
+# Large data & model artifacts (regenerate with provided scripts)
+*.rds
+**/cache_table_output/
+**/cache_test_diesel/diesel_features_all_full.csv
+**/qt_*.csv
+**/cache_table_july_test.csv
+2025-04-30-stations.csv
+**/2025-08-02-stations.csv
+# Ignore full station CSV in preprocessing output, but keep sample in data/
+/preprocessing/**/2025-04-30-stations.csv
+
+# Legacy local folders at repo root (superseded by preprocessing/, application/)
+/00_driving_distance/
+/01_process_stations/
+/Refuel Route-Planner Application/
+/diesel_xgb.R
+/report-latex.txt
+/overview of dataset.png
+
+# Partial API results
+partial_results_*/

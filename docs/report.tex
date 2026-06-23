@@ -1,0 +1,464 @@
+\newpage
+\chapter{Introduction}
+In long-distance driving, most drivers rely on navigation apps such as Google Maps to plan their route from point A to point B. While these apps are excellent at providing the fastest or shortest routes, they completely ignore one critical aspect of the journey: fueling decisions.
+
+Today, if a driver needs to refuel during the trip, there is no integrated way to know which station along the route will offer the best price at the time of arrival. Fuel prices fluctuate throughout the day, and the cheapest option when starting the journey may not be the cheapest when arriving. As a result, drivers are left guessing---some might check separate fuel price apps, but this process is manual, disconnected from the navigation route, and offers no predictive capability.
+
+This gap creates two main problems:
+\begin{enumerate}
+    \item \textbf{Unnecessary cost} -- Drivers often miss cheaper stations or stop at expensive ones simply because they lack timely, predictive information.
+    \item \textbf{Time inefficiency} -- Without knowing the best station in advance, drivers may detour unnecessarily or delay refueling decisions.
+\end{enumerate}
+
+To address this, our project aims to design a predictive fueling recommendation application. By combining real-time and historical fuel price data with station-specific and geospatial features, we can train predictive models that estimate the fuel price at each station at the driver’s expected arrival time. This enables the application to recommend the optimal station along the planned route---balancing both cost and convenience.
+
+In this report, we present the data foundation, model development process, and evaluation results that demonstrate how predictive analytics can transform fueling from a guess into an informed decision.
+
+
+\chapter{Data Preprocessing}
+\section{EDA of the Raw Dataset}
+We use the tankerkoenig dataset covering all gas stations in Germany. \footnote{\url{https://dev.azure.com/tankerkoenig/_git/tankerkoenig-data}}
+Original features include brand and post\_code. To account for regional differences, stations are grouped into six regions based on the first digit of the post code. Two temporal features, is\_weekend and is\_holiday, are added to capture potential time effects.For exploratory data analysis (EDA), the data are aggregated to the daily level per station (instead of the original second level) to obtain a clearer overview of price dynamics.
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/Brand.png}
+        \caption{Brand effect on fuel price}
+        \label{fig:brand_effect}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/region.png}
+        \caption{Region effect on fuel price by fuel type}
+        \label{fig:region_effect}
+    \end{subfigure}
+    \caption{Brand and region effects on fuel price}
+    \label{fig:brand_region_effects}
+\end{figure}
+Figure \ref{fig:brand_region_effects} (a) and (b) present the exploratory data analysis (EDA) of fuel prices by brand and by region respectively.The regression results highlight systematic differences in fuel prices across brands and regions in Germany.For brand effects, ARAL is used as the baseline. Among the ten most common brands, Shell and AGIP ENI consistently exhibit higher prices, whereas JET and Raiffeisen are generally associated with lower prices. Importantly, this pricing pattern is consistent across all three fuel types (Diesel,E5,E10), suggesting stable brand-level pricing strategies.For regional effects, the Western region serves as the baseline. Prices in the Central and Northern regions are significantly higher, indicating potential cost disadvantages or limited competition. In contrast, the Southwest shows the lowest or neutral effects across all fuel types, reflecting competitive pricing conditions. The Southern and Eastern regions display moderate deviations, with prices broadly aligned with those in the Western region.
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/price_trend_12.png}
+        \caption{Fuel price trends in December 2024}
+        \label{fig:fuel_trends_december}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.42\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/weekend1.png}
+        \caption{Fuel price trends in November 2024}
+        \label{fig:fuel_trends_november}
+    \end{subfigure}
+    \caption{Fuel price trends in November and December 2024}
+    \label{fig:fuel_trends_comparison}
+\end{figure}
+Figure \ref{fig:fuel_trends_comparison} (a) and (b) present the exploratory data analysis (EDA) of temporal patterns in fuel prices, focusing on holiday effects and weekday–weekend differences respectively.For holiday effects, December 2024 was initially considered as it includes the Christmas period. The grey-shaded area in Figure \ref{fig:fuel_trends_comparison} (a) marks the holiday window, during which fuel prices were consistently higher compared to the preceding days. To mitigate these holiday-induced distortions, November 2024 is selected as the primary analysis period, ensuring a clearer view of regular pricing dynamics.For weekday–weekend effects, Figure \ref{fig:fuel_trends_comparison} (b) shows that median fuel prices are systematically higher on weekdays than on weekends across all three fuel types (Diesel, E5, E10). This pattern points to persistent weekly demand cycles influencing pricing behavior.
+\section{Transformed Dataset Overview}
+We construct a large-scale dataset to analyze and predict fuel price dynamics across gas stations in Germany. The dataset spans January 2024 to June 2025, with millions of hourly observations. Figure \ref{fig:price_trend} illustrates the price trends of three fuel types. The prices show cyclical fluctuations and overall fuel prices in 2024 are higher than in the same periods of 2025.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{bda-tudscrreprt/figures/price_trend.png}
+    \caption{Fuel price trends from Jan 2024 to June 2025}
+    \label{fig:price_trend}
+\end{figure}
+
+Based on the raw dataset, we applied data augmentation by adding spatial features of stations and more fine-grained temporal features. The transformed dataset thus contains three main dimensions of features, as summarized in Table \ref{tab:features_en}.
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{Overview of dataset features}
+\label{tab:features_en}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Variable} & \textbf{Description} & \textbf{Type} & \textbf{Example}\\
+\midrule
+\multicolumn{4}{@{}l}{\textbf{Target variables}}\\
+Diesel, E5, E10 & Hourly fuel prices  & Continuous & \texttt{1.725 €/L}\\
+\addlinespace
+\multicolumn{4}{@{}l}{\textbf{Station features}}\\
+distance\_m\_air   & Distance to nearest airport & Continuous  & \texttt{12.3 km}\\
+distance\_m\_train & Distance to nearest train station & Continuous  & \texttt{2.1 km}\\
+distance\_m\_highway & Distance to nearest highway junction & Continuous  & \texttt{0.75km}\\
+distance\_m\_city  & Distance to city centre & Continuous  & \texttt{4.8km}\\
+brand\_clean       & Fuel-station brand & Categorical (30 levels) & \texttt{Aral}\\
+region             & Regional division & Categorical (6 levels) & \texttt{North}\\
+\addlinespace
+\multicolumn{4}{@{}l}{\textbf{Temporal features}}\\
+month              & Calendar month & Categorical (1–12) & \texttt{Aug}\\
+hour               & Hour of day & Categorical (0–23) & \texttt{14}\\
+wday               & Day of week & Categorical (Mon–Sun) & \texttt{Wed}\\
+is\_weekend         & Weekend indicator & Binary \{0,1\} & \texttt{0}\\
+is\_holiday         & Public-holiday indicator & Binary \{0,1\} & \texttt{1}\\
+is\_peakhours        & Peak-hour indicator & Binary \{0,1\} & \texttt{1}\\
+lag\_1        & Price lag 1 h & Continuous & \texttt{1.720 €/L}\\
+lag\_24       & Price lag 24 h & Continuous & \texttt{1.735 €/L}\\
+lag\_168      & Price lag 168 h (1 week) & Continuous & \texttt{1.710 €/L}\\
+roll\_mean\_6   & 6-hour rolling mean & Continuous & \texttt{1.722 €/L}\\
+roll\_mean\_24  & 24-hour rolling mean & Continuous & \texttt{1.728 €/L}\\
+roll\_mean\_72  & 72-hour rolling mean & Continuous & \texttt{1.730 €/L}\\
+roll\_mean\_168 & 168-hour rolling mean & Continuous & \texttt{1.725 €/L}\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Station features capture spatial differences by measuring driving distances to key transport nodes (e.g., highways, city centers, and borders) using the ORS API\footnote{\url{https://account.heigit.org/login}}, as well as categorical attributes such as brand and region.These variables reflect location-specific accessibility, market competition, and brand-related pricing strategies.
+
+Time features capture seasonal, weekly, and daily effects, together with lagged values and rolling averages. They account for cyclical patterns in demand and short-term price dependencies, allowing a better representation of temporal dynamics in fuel pricing.
+
+\section{Stratified Sampling}
+Germany has around 20,000 gas stations in total. Using all of them would make the dataset too large and computationally demanding, so we apply stratified sampling and select 2,000 stations based on the combination of region and brand. The distribution of the sampled stations is shown below.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{bda-tudscrreprt/figures/sample_stations.png}
+    \caption{Gas stations distribution in Germany}
+    \label{fig:station_distri}
+\end{figure}
+
+Figure \ref{fig:station_distri} shows that the distribution of sampled stations closely resembles the overall distribution of all gas stations in Germany. In particular, the western regions consistently host a larger number of stations compared to the eastern regions.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{bda-tudscrreprt/figures/price_density.png}
+    \caption{Diesel Hourly Price Density}
+    \label{fig:price_density}
+\end{figure}
+
+Figure \ref{fig:price_density} presents the density of hourly diesel prices for both the full dataset and the sampled stations. The two datasets exhibit highly similar price patterns, with most prices ranging between 1.4 and 1.8. Taken together, these figures indicate that the selected sample is representative and can be considered suitable for subsequent analysis.
+
+\chapter{Modeling Framework}
+\section{Structural Model}
+
+To capture the impact of static station attributes on diesel prices, we developed a \textbf{structural model} that relies on spatial and categorical features, including brand, region, and distances to key infrastructure(city center, highway junction, train station, airport).
+
+\subsubsection*{Benchmarking Model Performance}
+We first compared Decision Tree (rpart) and XGBoost using the same training -- testing split (training up to 31 March 2025, testing from 1 April 2025). Evaluation metrics included Root Mean Squared Error (RMSE) and Mean Absolute Error (MAE).
+
+\begin{itemize}
+    \item XGBoost achieved significantly lower RMSE (0.0667) and MAE (0.0566) than Decision Tree (RMSE: 0.1184, MAE: 0.0988), indicating better predictive accuracy and stability.
+    \item Price trend visualizations (Figure~\ref{fig:price_pattern}) further confirmed that XGBoost more closely followed actual price fluctuations, while Decision Tree tended to produce over-smoothed predictions.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\linewidth]{bda-tudscrreprt/figures/price_pattern.png}
+    \caption{Predicted vs. Actual Prices (XGBoost vs. Decision Tree)}
+    \label{fig:price_pattern}
+\end{figure}
+
+\noindent Based on these results, \textbf{XGBoost} was selected as the benchmark structural model for subsequent tuning and interpretation.
+
+\subsubsection*{Hyperparameter Optimization and Feature Selection}
+We applied Random Search to tune XGBoost hyperparameters (\texttt{max\_depth}, \texttt{subsample}, \linebreak \texttt{colsample\_bytree}, \texttt{min\_weight}) and performed feature selection using Information Gain.
+\begin{itemize}
+    \item Top contribution features included month, distance to city center, distance to train station, and hour.
+    \item Low-contribution temporal indicators (\texttt{is\_peakhours}, \texttt{is\_holiday}, \texttt{wday}, \texttt{is\_weekend}) were excluded, slightly improving RMSE from $0.0666697$ to $0.0665614$.
+\end{itemize}
+
+
+\subsubsection*{Model Interpretation}
+We evaluated feature importance using two approaches:
+\begin{enumerate}
+    \item \textbf{Information Gain} (built-in XGBoost metric, Figure~\ref{fig:fi_information_gain}) -- highlighted month and spatial distances as key factors.
+    \item \textbf{Permutation Importance} (IML package, Figure~\ref{fig:fi_permutation}) -- confirmed that distance to airport and distance to highway junction had the highest impact on predictions.
+\end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/fs(before).png}
+        \caption{Information Gain (built-in XGBoost)}
+        \label{fig:fi_information_gain}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/fs(after.png}
+        \caption{Permutation Importance (IML)}
+        \label{fig:fi_permutation}
+    \end{subfigure}
+    \caption{Feature importance rankings using two evaluation methods}
+    \label{fig:feature_importance_comparison}
+\end{figure}
+
+\noindent Partial Dependence Plots (PDP) and Individual Conditional Expectation (ICE) plots (Figure~\ref{fig:pdp_ice_spatial}) revealed clear spatial pricing patterns. 
+In these plots, the yellow line represents the averaged partial dependence across all stations, while the black lines show individual station-level conditional expectations. 
+We observe:
+\begin{itemize}
+    \item Stations farther from airports tend to have higher diesel prices.
+    \item Stations located close to highway junctions generally have lower prices.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/pdp_ice(air.png}
+        \caption{Distance to Airport}
+        \label{fig:pdp_air}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/pdp_ice_hi.png}
+        \caption{Distance to Highway Junction}
+        \label{fig:pdp_hwy}
+    \end{subfigure}
+    \caption{Partial Dependence and ICE plots for spatial features}
+    \label{fig:pdp_ice_spatial}
+\end{figure}
+
+
+
+\noindent Overall, the structural XGBoost model provides robust, interpretable predictions for stations without recent price history, allowing us to capture general spatial pricing patterns and underlying market tendencies. However, as the structural model tends to slightly overestimate overall prices, its predictive precision remains limited for short-term fluctuations.Therefore, it is complemented by a time- based model that leverages finer-grained temporal features to more accurately track and forecast short-term price movements.
+
+
+\section{Temporal Model}
+\subsubsection*{Model Development and Evaluation}
+To capture temporal dynamics of diesel prices, we incorporated both lagged values and rolling averages as predictors. Specifically, lag features (lag1, lag24, lag168) were added to capture time memory effects, while rolling means (rollmean6, rollmean24, rollmean72, rollmean168) were used to smooth out random fluctuations across multiple time horizons. In addition, we included time-dependent features such as month, hour, weekday, holiday, and peak-hour indicators to account for recurring seasonal and behavioral patterns.
+
+We compared three models on these features: CatBoost, LightGBM and Decision Tree. As shown in Figure \ref{fig:time_sp}, CatBoost and LightGBM closely followed actual price fluctuations for two sample stations across two time intervals, while Decision Tree produced discrete predictions and failed to capture detailed variations.
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/time_sample1.png}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/time_sample2.png}
+    \end{subfigure}
+    \caption{Predicted vs. Actual Prices across Temporal Models (CatBoost, LightGBM, Decision Tree)}
+    \label{fig:time_sp}
+\end{figure}
+
+Error analysis of predicted values confirmed these results (Figure \ref{fig:err_temp}). Decision Tree predictions showed wide error variance and systematic deviations, leading to RMSE 0.0351 and MAE 0.0277. In contrast, CatBoost (RMSE: 0.0164, MAE: 0.0111) and LightGBM (RMSE: 0.0174, MAE: 0.0115) produced much lower error levels and more stable performance.
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.5\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/time_error1.png}
+        \caption{Error plot}
+        \label{fig:error1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.42\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/time_error2.png}
+        \caption{Distribution of Prediction Error Values}
+        \label{fig:error2}
+    \end{subfigure}
+    \caption{Error Analysis across Temporal Models}
+    \label{fig:err_temp}
+\end{figure}
+
+\subsubsection*{Hyperparameter Optimization and Feature Selection}
+Although CatBoost achieved the best overall accuracy, we selected LightGBM for further optimization due to its computational efficiency in handling large-scale hourly data. Feature importance from LightGBM and LIME (IML package) consistently identified peak hours and rollmean72 as low-contribution predictors. Removing these features and tuning hyperparameters (\texttt{num\_leaves}, \texttt{max\_depth}, \texttt{min\_data\_in\_leaf}) improved RMSE from 0.0174 to 0.0162. 
+
+\section{Hybrid Model}
+Incorporating lagged features and rolling mean averages substantially improved predictive accuracy compared to the purely structural model (tuned XGBoost, RMSE: 0.0666). However, these lagged and rolling features are unavailable for unseen future timestamps, which may lead to unstable performance when forecasting beyond the observed data range. In addition, the temporal model exhibits weaker generalization than the structural model because it does not account for station-specific structural attributes such as brand or geographic location. These factors contributed strongly in the structural model and cannot be ignored. To overcome these limitations, we designed a two-model architecture that integrates both perspectives. The structural model provides stable and generalizable baseline predictions, while the temporal model captures accurate short-term dynamics. The final forecast is obtained as a weighted average of the predictions from the two models.
+
+Figure \ref{fig:bmr} illustrates the performances of XGBoost and LightGBM. XGBoost produces stable predictions but with higher overall error, while LightGBM achieves higher accuracy but is less stable for future forecasting because it does not incorporate structural and time-independent features.
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.5\linewidth}
+        \centering  \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/bmr1.png}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.4\linewidth}
+        \centering       \includegraphics[width=\linewidth]{bda-tudscrreprt/figures/bmr2.png}
+    \end{subfigure}
+    \caption{Comparison of prediction performance between XGBoost and LightGBM}
+    \label{fig:bmr}
+\end{figure}
+
+To balance the accuracy of the temporal model and the stability of the structural model, we defined a score to evaluate the overall performance of the hybrid model,
+\begin{equation}
+\text{Score} = \text{RMSE} + \lambda \cdot \text{Stability Penalty}
+\end{equation}
+\begin{equation}
+\text{Stability Penalty} = (1-\mu)^2
+\end{equation}
+where RMSE measures predictive accuracy and Stability Penalty represents instability of the temporal model, quantified as variance. The parameter $\lambda$ denotes the stability preference and was set to 0.03 to reflect a moderate preference. This setting was based on the RMSE values of XGBoost (0.0666) and LightGBM (0.0162), ensuring that both accuracy and stability contribute meaningfully to the weighted score. The weight $\mu$ corresponds to the contribution of XGBoost in the hybrid prediction. By testing different values of $\mu$, we optimized the weighted score and determined the final weights for XGBoost and LightGBM as 0.25 and 0.75 respectively.
+
+
+\chapter{Refuel Route-Planner Application}
+\section{Cache Table}
+
+\subsection{Background and Motivation}
+During the model development and training phase, our original dataset was extremely large, covering hourly fuel prices and features for sample gas stations across Germany. Running the full dataset directly for training and testing would require excessive computational resources and time.
+
+To speed up experimentation and model tuning, we initially worked with a sampled dataset of around 2{,}000 stations. While this made it easier to iterate and improve the models, the final solution must be able to cover all gas stations in Germany to be truly useful for long-distance trip planning.
+
+However, when scaling back up to the full national dataset (tens of thousands of stations $\times$ 24 hours $\times$ multiple days), running predictions on demand poses two main challenges:
+
+\begin{enumerate}
+    \item \textbf{High latency} -- On-demand predictions require loading large amounts of data and running the model each time, which cannot meet real-time response needs.
+    \item \textbf{Heavy server load} -- Frequent queries would put a constant strain on computation, risking slower responses and reduced service stability.
+\end{enumerate}
+
+To address these issues, we built a Cache Table, which pre-computes and stores predictions (with post-prediction corrections) for all stations nationwide. This ensures that user queries can be answered instantly without recalculating the full prediction pipeline.
+
+\subsection{Construction and Nationwide Coverage}
+
+The Cache Table combines predictions from two complementary models:
+\begin{itemize}
+    \item \textbf{Temporal model (LightGBM)} --- trained on historical prices with lag and rolling mean features to capture short-term dynamics.
+    \item \textbf{Structural model (XGBoost)} --- trained on fixed station attributes (brand, region, distances) to capture long-term structural differences.
+\end{itemize}
+
+For each station and hour in the prediction window (e.g., July 22--28, 2025), the temporal model was applied using the latest available lag and rolling features. In parallel, the structural model was run on an identical station-hour grid with categorical levels aligned to training. Predictions were merged using a weighted average (0.75 temporal, 0.25 structural), based on validation performance. Metadata such as prediction date and model version were appended, and results were stored as a CSV for fast nationwide lookups.
+
+To extend predictions beyond the sampled training set, we processed a nationwide dataset covering all stations and hours in the pre-prediction period (e.g., June 24--July 21, 2025).
+
+For the temporal model, each station's most recent lag and rolling features were extracted as the starting point for sequential hourly predictions. For the structural model, a complete station-hour grid was built and enriched with fixed attributes and time-based categorical features, matching the training format.
+
+Running both models on this full dataset and merging results with the same weighting produced a Cache Table with reliable hourly prices for every station in Germany, enabling real-time, large-scale queries for applications such as route-based refueling recommendations.
+
+\subsection{Evaluation and Post-Prediction Correction}
+
+To asses the accuracy of the cache table, we compared its predictions against observed E5 prices on 22 July 2025, using the dataset \texttt{e5\_features\_all\_full.csv}. Both datasets were converted to CET and merged by \textit{(station\_uuid, hour\_full)}. Performance was evaluated using RMSE and MAE, alongside visual diagnostics including the error density (\textit{Predicted$-$ Actual}) and scatter plots against the red line.
+
+\subsubsection*{Observed Bias and Linear Adjustment}
+To assess initial performance, we examined predictions for the first day in the evaluation period. On this date, the model systematically overestimated actual prices. 
+As shown in Figure~\ref{fig:error_density}, the error density distribution was shifted above zero, indicating a consistent positive bias. 
+Similarly, the Actual-vs-Predicted scatter plot in Figure~\ref{fig:actual_vs_pred} revealed a strong linear association with a noticeable vertical offset. 
+These patterns suggest that the temporal dynamics were captured accurately, but the overall price level required calibration.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/v1-1.png}
+        \caption{Prediction error density (E5)}
+        \label{fig:error_density}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/v1-2.png}
+        \caption{Actual vs. predicted prices (E5)}
+        \label{fig:actual_vs_pred}
+    \end{subfigure}
+    \caption{Observed bias on the first evaluation day (2025--07--22)}
+    \label{fig:observed_bias}
+\end{figure}
+
+To address the bias, we used a simple ordinary least squares (OLS) model on 22 July:
+\begin{equation}
+\text{Actual} = a \cdot \text{Predicted} + b
+\end{equation}
+and applied the estimated $(\hat a, \hat b)$ to adjust predictions for 22 July and subsequent days, without retraining the underlying models.
+
+\subsubsection{Accuracy After Adjustment (22 July) and Generation (23--25 July)}
+The adjustment substantially reduced prediction errors:
+\[
+\text{RMSE decreased from } 0.1188 \text{ to } 0.0369, \quad
+\text{MAE decreased from } 0.1132 \text{ to } 0.0285.
+\]
+
+After the correction, the error distribution (Figure~\ref{fig:corrected_bias}a) was centered close to zero, and the scatter plot (Figure~\ref{fig:corrected_bias}b) aligned more closely with the 45° reference line, indicating improved calibration.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/v2-1.png}
+        \caption{Corrected prediction error density (E5).}
+        \label{fig:corrected_error_density}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/v2-2.png}
+        \caption{Actual vs. corrected predicted prices.}
+        \label{fig:corrected_scatter}
+    \end{subfigure}
+    \caption{Model performance after post-prediction adjustment on 2025--07--22}
+    \label{fig:corrected_bias}
+\end{figure}
+
+
+The same $(\hat a, \hat b)$ estimated on 22 July was applied to predictions for 23--25 July. The error metrics improved consistently across all three days (Table~\ref{tab:daily_correction}), suggesting stable performance beyond the fitting date.
+
+\begin{table}[h]
+\centering
+\caption{Effect of 22 July correction applied to 23--25 July}
+\label{tab:daily_correction}
+\begin{tabular}{lcccc}
+\toprule
+Date & RMSE (Before) & RMSE (After) & MAE (Before) & MAE (After) \\
+\midrule
+23/07 & 0.1235 & 0.0368 & 0.1183 & 0.0294 \\
+24/07 & 0.1249 & 0.0380 & 0.1197 & 0.0307 \\
+25/07 & 0.1255 & 0.0389 & 0.1200 & 0.0312 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection*{Operational Considerations}
+The adjustment was estimated using only 22 July data and applied forward to avoid data leakage. For production use, we recommend re-estimating $(a,b)$ on a rolling basis (e.g., daily or weekly) to capture potential market regime changes. While this global adjustment improves overall calibration, future work could extend the approach to incorporate local corrections for stations with persistent deviations.
+
+
+
+\section{ShinyApp Implementation}
+\subsection{Interactive Dashboard}
+We used a cache table to generate nationwide hourly gas price predictions from August 4, 00:00 to August 6, 23:00, considering only stations that were open on August 2. The predictions were then visualized in an interactive dashboard. The application can be used as a navigation tool. As shown in Figure \ref{fig:shiny}, the user can select origin, destination, departure date, and departure time. By clicking \textit{Show Routes}, the available routes retrieved from the Google Maps API are displayed. The central panel shows the map with default route highlighted in blue and alternative routes in gray. By clicking on gray routes, the user can switch their preferred route. On the right side, several route characteristics (duration, distance, and number of turns) are displayed to support the user’s decision-making.
+
+In addition to route navigation, the application also supports refuel planning. The user can specify fuel type and the number of refueling stops (e.g., diesel, 3), then click \textit{Show Route with Refuel Stops}. The map displays the refuel route in orange and displays the recommended gas stations along the selected path. The right panel also shows the distance and estimated duration of the refuel route, which enables a direct comparison with the original route.  
+
+The dashboard supports route planning for any origin-destination pair in Germany. A second example is presented in Figure \ref{fig:shiny2}, showing the route from SLUB Dresden to Leipzig University Library with detailed refuel planning results.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\linewidth]{bda-tudscrreprt/figures/shiny.png}
+    \caption{Route-Planner Overview (Dresden -- Heidelberg)}
+    \label{fig:shiny}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\linewidth]{bda-tudscrreprt/figures/shiny2.png}
+    \caption{Route-Planner Overview (SLUB Dresden -- Leipzig University Library)}
+    \label{fig:shiny2}
+\end{figure}
+
+
+\subsection{Refuel Station Recommendation Mechanism}
+The recommendation of gas stations is based on both spatial and temporal considerations. To ensure that refueling stops are reasonably distributed along the selected route, we apply the k-nearest neighbors algorithm to cluster all candidate gas stations into k groups, where k corresponds to the number of refueling stops specified by the user. From each cluster, we select the cheapest station based on the predicted price at the estimated time of arrival.
+The estimated arrival time at each gas station is calculated by assuming a constant average driving speed of 90 km/h. For every candidate station, the predicted fuel price at the corresponding arrival time is retrieved from the cache table. This allows us to compare the temporal price differences across stations and select the optimal ones. In this way, the recommended stations reflect not only the user’s chosen route but also the dynamic price variation over time.
+
+To define the candidate set of stations, we consider all stations within three kilometers of the chosen route, thereby allowing for small detours. Figure \ref{fig:refueling} illustrates three recommended refueling stops along the route shown in Figure \ref{fig:shiny}, where the orange refueling path passes directly through the selected stations. For each station, users can access detailed information such as name, predicted price, and geographic location, providing a clear overview for decision-making.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[b]{0.3\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/refuel1.png}
+        \caption{Refuel Station 1}
+        \label{fig:refuel1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.3\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/refuel2.png}
+        \caption{Refuel Station 2}
+        \label{fig:refuel2}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.3\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{bda-tudscrreprt/figures/refuel3.png}
+        \caption{Refuel Station 3}
+        \label{fig:refuel3}
+    \end{subfigure}
+    \caption{Refueling Recommendations along the Route (Dresden -- Heidelberg)}
+    \label{fig:refueling}
+\end{figure}
