@@ -7,26 +7,6 @@
 
 ---
 
-## Academic context
-
-| | |
-|---|---|
-| **University** | [Technische Universität Dresden (TU Dresden)](https://tu-dresden.de/) |
-| **Faculty** | Friedrich List Faculty of Transport and Traffic Sciences |
-| **Chair** | [Chair of Big Data Analytics in Transportation](https://tu-dresden.de/bu/verkehr/ivw/bda) |
-| **Course** | Methods in Data Analytics *(Applications in Data Analytics)* — Summer Term 2025 |
-| **Instructor** | Prof. Dr. Pascal Kerschke |
-
-### Team
-
-| Name | Role |
-|------|------|
-| **Wanting Zuo** | Data preprocessing, modeling |
-| **Ziling Song** | Modeling, cache table, Shiny application |
-| **Yi-Pei Yang** | EDA, structural & temporal models |
-
----
-
 ## Problem & motivation
 
 Navigation apps optimize for **time and distance**, but not **fuel cost**. Fuel prices change hourly and vary by location — the cheapest station at departure may not be cheapest at arrival.
@@ -72,11 +52,6 @@ Key findings from EDA:
 - **Temporal patterns:** weekday prices > weekend; holiday periods show elevated prices
 
 <p align="center">
-  <img src="pictures/Brand.png" width="45%" alt="Brand effect on fuel price"/>
-  <img src="pictures/region.png" width="45%" alt="Region effect on fuel price"/>
-</p>
-
-<p align="center">
   <img src="pictures/price_trend.png" width="90%" alt="Fuel price trends Jan 2024 – Jun 2025"/>
 </p>
 
@@ -84,54 +59,55 @@ Key findings from EDA:
 
 #### Structural model (XGBoost)
 
-Uses static station attributes: brand, region, distances to POIs, month, hour.
+The structural model captures how **static station attributes** influence diesel prices — useful when recent price history is unavailable and for understanding long-run spatial pricing patterns.
 
-| Model | RMSE | MAE |
-|-------|------|-----|
-| Decision Tree | 0.1184 | 0.0988 |
-| **XGBoost** | **0.0667** | **0.0566** |
+**Variables modeled:**
 
-<p align="center">
-  <img src="pictures/price_pattern.png" width="60%" alt="XGBoost vs Decision Tree predictions"/>
-</p>
+- **Spatial distances** (`distance_m_air`, `distance_m_train`, `distance_m_highway`, `distance_m_city`): driving distances to the nearest airport, train station, highway junction, and city center. These reflect location-specific accessibility, local competition, and transport-hub effects on pricing.
+- **Categorical attributes** (`brand_clean`, `region`): brand-level pricing strategies and regional market differences across Germany.
+- **Coarse temporal features** (`month`, `hour`): seasonal and intra-day cycles without relying on price lags.
 
-Feature importance (Information Gain & Permutation Importance):
+After benchmarking Decision Tree (RMSE 0.1184) against XGBoost (RMSE 0.0667), we selected **XGBoost** and tuned hyperparameters via Random Search. Feature selection with Information Gain removed low-contribution indicators (`is_peakhours`, `is_holiday`, `wday`, `is_weekend`), marginally improving RMSE to 0.0666.
 
-<p align="center">
-  <img src="pictures/fs_before.png" width="45%" alt="Information Gain feature importance"/>
-  <img src="pictures/fs_after.png" width="45%" alt="Permutation importance"/>
-</p>
+**Interpretation — key conclusions:**
 
-Spatial pricing patterns (PDP / ICE):
+- Information Gain highlighted **month** and **spatial distances** (especially city center and train station) as top contributors.
+- Permutation Importance confirmed **distance to airport** and **distance to highway junction** as the strongest spatial drivers.
+- Stations farther from airports tend to charge more; stations near highway junctions tend to be cheaper.
 
-<p align="center">
-  <img src="pictures/pdp_ice_air.png" width="45%" alt="Distance to airport"/>
-  <img src="pictures/pdp_ice_hi.png" width="45%" alt="Distance to highway"/>
-</p>
+The structural model is stable and generalizable, but tends to slightly overestimate prices and cannot track short-term fluctuations — motivating the temporal model below.
 
 #### Temporal model (LightGBM)
 
-Uses lag features, rolling means, and time indicators for short-term dynamics.
+The temporal model uses **lag features** (1h, 24h, 168h), **rolling means** (6h–168h), and time indicators (month, hour, weekday, holiday, peak hours) to capture short-term price dynamics.
 
-| Model | RMSE | MAE |
-|-------|------|-----|
-| Decision Tree | 0.0351 | 0.0277 |
-| CatBoost | 0.0164 | 0.0111 |
-| **LightGBM (tuned)** | **0.0162** | **0.0115** |
+CatBoost (RMSE 0.0164) and LightGBM (RMSE 0.0174) both outperformed Decision Tree (RMSE 0.0351). We chose **LightGBM** for further tuning due to computational efficiency on large hourly data; after removing low-importance features (`is_peakhours`, `roll_mean_72`) and hyperparameter tuning, RMSE improved to **0.0162**.
 
 <p align="center">
-  <img src="pictures/time_sample1.png" width="45%" alt="Temporal model sample 1"/>
-  <img src="pictures/time_sample2.png" width="45%" alt="Temporal model sample 2"/>
+  <img src="pictures/time_sample1.png" width="70%" alt="Temporal model: predicted vs. actual prices"/>
 </p>
 
 #### Hybrid model
 
-Weighted ensemble: **25% XGBoost + 75% LightGBM**, optimized with a stability-aware score (λ = 0.03).
+Neither model alone is sufficient:
 
-<p align="center">
-  <img src="pictures/bmr1.png" width="50%" alt="Hybrid model comparison 1"/>
-  <img src="pictures/bmr2.png" width="40%" alt="Hybrid model comparison 2"/>
-</p>
+- The **temporal model** is accurate but relies on lag/rolling features unavailable for unseen future timestamps, making long-horizon forecasts less stable. It also ignores station-specific attributes (brand, region, location).
+- The **structural model** generalizes well across stations but has higher error and misses short-term dynamics.
+
+We therefore combine both via a **weighted average**. To choose the blend, we defined a composite score balancing accuracy and temporal stability:
+
+$$\text{Score} = \text{RMSE} + \lambda \cdot \text{Stability Penalty}$$
+
+$$\text{Stability Penalty} = (1 - \mu)^2$$
+
+where:
+
+- **RMSE** measures predictive accuracy on the validation set
+- **Stability Penalty** penalizes instability of the temporal model (quantified as prediction variance)
+- **λ = 0.03** reflects a moderate stability preference, calibrated against the RMSE scales of XGBoost (0.0666) and LightGBM (0.0162) so both terms contribute meaningfully
+- **μ** is the weight assigned to XGBoost in the hybrid prediction (LightGBM receives 1 − μ)
+
+By testing different values of μ, we minimized the composite score and set the final weights to **25% XGBoost + 75% LightGBM**.
 
 ### 4. Cache table & post-prediction correction
 
@@ -149,6 +125,7 @@ A systematic positive bias was corrected with a simple OLS adjustment (`Actual =
 Interactive dashboard integrating **Google Maps routing** with **predicted fuel prices**.
 
 **Features:**
+
 - Origin / destination selection with route alternatives
 - Fuel type (Diesel, E5, E10) and number of refueling stops
 - KNN-based station clustering along route + cheapest-at-arrival-time selection
@@ -159,16 +136,23 @@ Interactive dashboard integrating **Google Maps routing** with **predicted fuel 
 </p>
 
 <p align="center">
-  <img src="pictures/shiny2.png" width="85%" alt="Route planner Dresden to Leipzig"/>
+  <video src="docs/refuel_route_planner.mp4" controls width="800">
+    Your browser does not support embedded video.
+    <a href="docs/refuel_route_planner.mp4">Download demo video</a>
+  </video>
 </p>
 
-**Refueling recommendations** (Dresden → Heidelberg, 3 stops):
+<p align="center"><em>Demo: route planning and refuel-stop recommendation in the Shiny app</em></p>
 
-<p align="center">
-  <img src="pictures/refuel1.png" width="30%" alt="Refuel stop 1"/>
-  <img src="pictures/refuel2.png" width="30%" alt="Refuel stop 2"/>
-  <img src="pictures/refuel3.png" width="30%" alt="Refuel stop 3"/>
-</p>
+#### Refueling recommendations
+
+Station selection combines **spatial and temporal** logic:
+
+1. Collect all stations within **3 km** of the chosen route (allowing small detours)
+2. Cluster candidates into *k* groups via **k-nearest neighbors**, where *k* equals the user-specified number of refueling stops — ensuring stops are spread along the route
+3. From each cluster, pick the station with the **lowest predicted price at estimated arrival time** (assuming 90 km/h average speed, looked up from the cache table)
+
+When the user clicks **Show Route with Refuel Stops**, the app computes a **real refuel route** (shown in orange) that **passes through the selected stations** — not just markers on the original path. Because cheaper stations may lie slightly off the fastest route, the refuel path can be **longer in distance and duration** than the baseline route; the right panel shows both for direct comparison. Each recommended stop displays name, predicted price, and location details.
 
 ---
 
@@ -181,8 +165,9 @@ Interactive dashboard integrating **Google Maps routing** with **predicted fuel 
 │   └── sample/2025-04-30-stations-sample.csv
 ├── docs/
 │   ├── report.tex                         # Full project report (LaTeX source)
+│   ├── refuel_route_planner.mp4           # Shiny app demo video
 │   └── overview-of-dataset.png            # Feature schema overview
-├── pictures/                              # All figures used in report & README
+├── pictures/                              # Figures used in report & README
 ├── preprocessing/
 │   ├── 00_driving_distance/               # ORS driving distance computation
 │   └── 01_process_stations/               # Station metadata & stratified sampling
@@ -268,3 +253,13 @@ export GOOGLE_MAPS_API_KEY="your-google-maps-key"
 ## License
 
 Academic project — code provided for portfolio and educational purposes. Contact the authors for other uses.
+
+---
+
+## Academic context
+
+This project was completed as part of **Methods in Data Analytics** (Summer Term 2025) at [Technische Universität Dresden (TU Dresden)](https://tu-dresden.de/), Friedrich List Faculty of Transport and Traffic Sciences, under the [Chair of Big Data Analytics in Transportation](https://tu-dresden.de/bu/verkehr/ivw/bda). Course instructor: Prof. Dr. Pascal Kerschke.
+
+## Team
+
+This project was jointly developed by **Wanting Zuo**, **Ziling Song**, and **Yi-Pei Yang**.
