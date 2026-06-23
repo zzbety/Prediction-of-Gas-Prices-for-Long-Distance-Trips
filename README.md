@@ -52,7 +52,7 @@ Key findings from EDA:
 - **Temporal patterns:** weekday prices > weekend; holiday periods show elevated prices
 
 <p align="center">
-  <img src="pictures/price_trend.png" width="90%" alt="Fuel price trends Jan 2024 – Jun 2025"/>
+  <img src="pictures/price_trend.png" width="70%" alt="Fuel price trends Jan 2024 – Jun 2025"/>
 </p>
 
 ### 3. Modeling
@@ -84,7 +84,7 @@ The temporal model uses **lag features** (1h, 24h, 168h), **rolling means** (6h�
 CatBoost (RMSE 0.0164) and LightGBM (RMSE 0.0174) both outperformed Decision Tree (RMSE 0.0351). We chose **LightGBM** for further tuning due to computational efficiency on large hourly data; after removing low-importance features (`is_peakhours`, `roll_mean_72`) and hyperparameter tuning, RMSE improved to **0.0162**.
 
 <p align="center">
-  <img src="pictures/time_sample1.png" width="70%" alt="Temporal model: predicted vs. actual prices"/>
+  <img src="pictures/time_sample1.png" width="60%" alt="Temporal model: predicted vs. actual prices"/>
 </p>
 
 #### Hybrid model
@@ -136,9 +136,9 @@ Interactive dashboard integrating **Google Maps routing** with **predicted fuel 
 </p>
 
 <p align="center">
-  <img src="pictures/refuel1.png" width="25%" alt="Refuel 1"/>
-  <img src="pictures/refuel2.png" width="25%" alt="Refuel 2"/>
-  <img src="pictures/refuel3.png" width="25%" alt="Refuel 3"/>
+  <img src="pictures/refuel1.png" width="30%" alt="Refuel 1"/>
+  <img src="pictures/refuel2.png" width="30%" alt="Refuel 2"/>
+  <img src="pictures/refuel3.png" width="30%" alt="Refuel 3"/>
 </p>
 
 When the user clicks **Show Route with Refuel Stops**, the app computes a **real refuel route** (shown in orange) that **passes through the selected stations** — not just markers on the original path. Because cheaper stations may lie slightly off the fastest route, the refuel path can be **longer in distance and duration** than the baseline route; the right panel shows both for direct comparison. Each recommended stop displays name, predicted price, and location details.
