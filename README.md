@@ -136,23 +136,24 @@ Interactive dashboard integrating **Google Maps routing** with **predicted fuel 
 </p>
 
 <p align="center">
-  <video src="docs/refuel_route_planner.mp4" controls width="800">
-    Your browser does not support embedded video.
-    <a href="docs/refuel_route_planner.mp4">Download demo video</a>
+  <img src="pictures/refuel1.png" width="25%" alt="Refuel 1"/>
+  <img src="pictures/refuel2.png" width="25%" alt="Refuel 2"/>
+  <img src="pictures/refuel3.png" width="25%" alt="Refuel 3"/>
+</p>
+
+When the user clicks **Show Route with Refuel Stops**, the app computes a **real refuel route** (shown in orange) that **passes through the selected stations** — not just markers on the original path. Because cheaper stations may lie slightly off the fastest route, the refuel path can be **longer in distance and duration** than the baseline route; the right panel shows both for direct comparison. Each recommended stop displays name, predicted price, and location details.
+
+> **Note:** A live demo of the Shiny Route Planner is available below:
+
+<p align="center">
+  <video width="80%" controls>
+    <source src="docs/refuel_route_planner.mp4" type="video/mp4">
+    Your browser does not support the video tag.
   </video>
 </p>
 
-<p align="center"><em>Demo: route planning and refuel-stop recommendation in the Shiny app</em></p>
-
-#### Refueling recommendations
-
-Station selection combines **spatial and temporal** logic:
-
-1. Collect all stations within **3 km** of the chosen route (allowing small detours)
-2. Cluster candidates into *k* groups via **k-nearest neighbors**, where *k* equals the user-specified number of refueling stops — ensuring stops are spread along the route
-3. From each cluster, pick the station with the **lowest predicted price at estimated arrival time** (assuming 90 km/h average speed, looked up from the cache table)
-
-When the user clicks **Show Route with Refuel Stops**, the app computes a **real refuel route** (shown in orange) that **passes through the selected stations** — not just markers on the original path. Because cheaper stations may lie slightly off the fastest route, the refuel path can be **longer in distance and duration** than the baseline route; the right panel shows both for direct comparison. Each recommended stop displays name, predicted price, and location details.
+If the video does not display, please download it directly from:
+docs/refuel_route_planner.mp4
 
 ---
 
@@ -262,4 +263,4 @@ This project was completed as part of **Methods in Data Analytics** (Summer Term
 
 ## Team
 
-This project was jointly developed by **Wanting Zuo**, **Ziling Song**, and **Yi-Pei Yang**.
+This project was jointly developed by **Ziling Song**, **Wanting Zuo**, and **Yi-Pei Yang** (listed in alphabetical order).
