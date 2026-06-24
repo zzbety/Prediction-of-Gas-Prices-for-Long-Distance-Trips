@@ -3,9 +3,9 @@
 > **End-to-end ML pipeline + interactive route planner** that predicts hourly fuel prices across Germany and recommends cost-optimal refueling stops along long-distance routes.
 
 [![TU Dresden](https://img.shields.io/badge/University-TU%20Dresden-0066cc)](https://tu-dresden.de/)
-[![Course](https://img.shields.io/badge/Course-Methods%20in%20Data%20Analytics-2ea44f)](https://github.com/bda-it)
+[![Course](https://img.shields.io/badge/Course-Applications%20in%20Data%20Analytics-2ea44f)](https://github.com/bda-it)
 
----
+--- 
 
 ## Problem & motivation
 
@@ -259,7 +259,7 @@ Academic project — code provided for portfolio and educational purposes. Conta
 
 ## Academic context
 
-This project was completed as part of **Methods in Data Analytics** (Summer Term 2025) at [Technische Universität Dresden (TU Dresden)](https://tu-dresden.de/), Friedrich List Faculty of Transport and Traffic Sciences, under the [Chair of Big Data Analytics in Transportation](https://tu-dresden.de/bu/verkehr/ivw/bda). Course instructor: Prof. Dr. Pascal Kerschke.
+This project was completed as part of **Applications in Data Analytics** (Summer Term 2025) at [Technische Universität Dresden (TU Dresden)](https://tu-dresden.de/), Friedrich List Faculty of Transport and Traffic Sciences, under the [Chair of Big Data Analytics in Transportation](https://tu-dresden.de/bu/verkehr/ivw/bda). Course instructor: Prof. Dr. Pascal Kerschke.
 
 ## Team
 
